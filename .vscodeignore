@@ -4,6 +4,7 @@
 node_modules/**
 **/*.vsix
 PUBLISHING.md
+docs/**
 *.svg
 *.log
 .DS_Store
