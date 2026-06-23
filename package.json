@@ -1,8 +1,8 @@
 {
   "name": "sound-alerts",
   "displayName": "Sound Alerts",
-  "description": "Audio cues for the Cursor agent: a bell when it finishes a turn and a warning when it asks a question (MCQ), by watching agent transcripts.",
-  "version": "0.0.2",
+  "description": "Audio cues for the Cursor agent: rings a bell when the agent finishes, via a Cursor `stop` hook the extension installs for you.",
+  "version": "0.0.4",
   "publisher": "dshashikk",
   "license": "MIT",
   "engines": {
@@ -51,6 +51,14 @@
       {
         "command": "soundAlerts.testSounds",
         "title": "Sound Alerts: Test Sounds"
+      },
+      {
+        "command": "soundAlerts.reinstallHook",
+        "title": "Sound Alerts: Reinstall Hook"
+      },
+      {
+        "command": "soundAlerts.removeHook",
+        "title": "Sound Alerts: Remove Hook"
       }
     ],
     "configuration": {
@@ -59,32 +67,22 @@
         "soundAlerts.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable/disable sound alerts."
+          "description": "Enable/disable sound alerts. When off, the Cursor stop hook is removed."
         },
         "soundAlerts.bellSound": {
           "type": "string",
           "default": "/System/Library/Sounds/Glass.aiff",
-          "description": "Sound file played when the agent finishes a turn (results ready)."
+          "description": "Sound file played when the agent finishes (the stop hook)."
         },
         "soundAlerts.warningSound": {
           "type": "string",
           "default": "/System/Library/Sounds/Sosumi.aiff",
-          "description": "Sound file played when the agent asks a question (MCQ)."
+          "description": "Sound used by the Test Sounds command (and reserved for a future question alert)."
         },
         "soundAlerts.playerCommand": {
           "type": "string",
           "default": "afplay",
           "description": "Command used to play a sound file (macOS: afplay; Linux: paplay/aplay; Windows: powershell)."
-        },
-        "soundAlerts.idleMs": {
-          "type": "number",
-          "default": 1500,
-          "description": "Milliseconds of transcript write-idle before classifying the latest agent message (debounce)."
-        },
-        "soundAlerts.pollMs": {
-          "type": "number",
-          "default": 400,
-          "description": "How often (ms) to scan transcripts for changes. Lower = snappier alerts, slightly more CPU. Applied on reload."
         }
       }
     }

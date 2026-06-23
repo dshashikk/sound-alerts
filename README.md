@@ -1,22 +1,25 @@
 # Sound Alerts
 
-Audio cues for the [Cursor](https://cursor.com) agent. It plays:
+Audio cues for the [Cursor](https://cursor.com) agent: 🔔 a **bell** the moment
+the agent finishes responding.
 
-- 🔔 a **bell** when the agent finishes a turn (results ready), and
-- ⚠️ a **warning** when the agent asks you a question / MCQ.
-
-Cursor's chat UI isn't exposed to the extension API, so this works by **watching
-the agent transcript files** Cursor writes at
-`~/.cursor/projects/*/agent-transcripts/**/*.jsonl`. When a transcript goes
-write-idle, the extension classifies the latest assistant message and plays the
-matching sound.
+Cursor's chat UI isn't exposed to the extension API, but Cursor *does* support
+[Hooks](https://docs.cursor.com) — scripts it runs at agent lifecycle events. On
+activation this extension installs a **`stop` hook** (into `~/.cursor/hooks.json`)
+that plays your bell sound the instant the agent completes. That makes the alert
+event-driven and reliable, with no polling and no false positives.
 
 ## Features
 
-- Bell on turn completion, warning on `AskQuestion`.
-- No sound while the agent is still working (mid tool-calls).
-- Fully configurable sounds, player command, and debounce.
-- `Sound Alerts: Test Sounds` command to preview.
+- 🔔 Bell on agent completion, driven by Cursor's `stop` hook (instant, reliable).
+- Installs/updates the hook automatically; preserves any other hooks you have.
+- Status-bar counter of bells rung; click to preview sounds.
+- Configurable sound + player command. Disabling the extension removes the hook.
+- Commands: `Sound Alerts: Test Sounds`, `Reinstall Hook`, `Remove Hook`.
+
+> Note: the bell is the agent-completion alert. A distinct "question/MCQ"
+> warning isn't currently available as a hook event; the `warningSound` setting
+> is used by the test command and reserved for the future.
 
 ## Install
 
@@ -28,22 +31,20 @@ cursor --install-extension sound-alerts-<version>.vsix
 code --install-extension sound-alerts-<version>.vsix
 ```
 
-Then reload the window (**Developer: Reload Window**).
+Then reload the window (**Developer: Reload Window**) so the hook is installed.
 
-> The automatic sounds trigger on **Cursor agent** activity. In plain VS Code the
-> extension installs and the test command works, but there are no Cursor
-> transcripts to watch unless Cursor's agent is running.
+> This is a **Cursor** feature — it relies on Cursor's hooks. In plain VS Code the
+> extension installs and the test command works, but there's no agent `stop`
+> event to ring the bell.
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `soundAlerts.enabled` | `true` | Master on/off. |
-| `soundAlerts.bellSound` | `/System/Library/Sounds/Glass.aiff` | Sound on turn completion. |
-| `soundAlerts.warningSound` | `/System/Library/Sounds/Sosumi.aiff` | Sound on question/MCQ. |
+| `soundAlerts.enabled` | `true` | Master on/off. Turning off removes the hook. |
+| `soundAlerts.bellSound` | `/System/Library/Sounds/Glass.aiff` | Sound played on agent completion. |
+| `soundAlerts.warningSound` | `/System/Library/Sounds/Sosumi.aiff` | Used by the test command (reserved for a future question alert). |
 | `soundAlerts.playerCommand` | `afplay` | Player binary. |
-| `soundAlerts.idleMs` | `1500` | Write-idle debounce before classifying. |
-| `soundAlerts.pollMs` | `400` | How often (ms) to scan transcripts for changes. Applied on reload. |
 
 ### Cross-platform players
 
@@ -58,19 +59,26 @@ npm install
 npm run package        # build the .vsix (vsce)
 ```
 
-## How it works (detail)
+## How it works
 
-Each transcript line is a JSON object. The extension reads the tail of the
-changed file and finds the most recent `role: "assistant"` message:
+On activation the extension:
 
-- ends on a `tool_use` named `AskQuestion` → **warning**
-- text-only (no `tool_use`) → **bell**
-- ends on another `tool_use` → still working, no sound
+1. Writes a small bell script to `~/.cursor/hooks/sound-alerts-bell.sh`.
+2. Merges a `stop` entry into `~/.cursor/hooks.json` (keeping your other hooks).
+
+Cursor runs that script the moment the agent finishes, which plays the bell —
+event-driven, instant, and with no transcript polling. Changing the sound/player
+settings regenerates the script; disabling the extension (or running
+**Remove Hook**) removes both the script and the `hooks.json` entry.
 
 ## Limitations
 
-- Reactive (small delay) and dependent on Cursor's transcript JSON format, which
-  a future Cursor update could change.
+- Cursor-only (depends on Cursor Hooks).
+- The bell fires on agent completion. There's no hook event for "agent asked an
+  MCQ", so a distinct question warning isn't available yet.
+- Uninstalling the extension doesn't auto-clean the hook (extensions have no
+  reliable uninstall step); run **Sound Alerts: Remove Hook** first, or delete
+  the `stop` entry from `~/.cursor/hooks.json` manually.
 - Sound playback shells out to `playerCommand`; configure it per OS.
 
 ## License

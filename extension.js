@@ -6,9 +6,14 @@ const cp = require('child_process');
 
 let output = null;
 let statusItem = null;
-let pollTimer = null;
-const state = new Map(); // file -> { size, lastGrow, evaluatedSize }
-const counts = { bell: 0, warning: 0 };
+let uiTimer = null;
+
+const HOOKS_DIR = path.join(os.homedir(), '.cursor', 'hooks');
+const HOOKS_JSON = path.join(os.homedir(), '.cursor', 'hooks.json');
+const SCRIPT_PATH = path.join(HOOKS_DIR, 'sound-alerts-bell.sh');
+const COUNT_FILE = path.join(HOOKS_DIR, '.sound-alerts-count');
+const PAYLOAD_LOG = path.join(HOOKS_DIR, '.sound-alerts-payload.log');
+const HOOK_MARKER = 'sound-alerts-bell';
 
 function cfg() {
     const c = vscode.workspace.getConfiguration('soundAlerts');
@@ -16,9 +21,7 @@ function cfg() {
         enabled: c.get('enabled', true),
         bell: c.get('bellSound', '/System/Library/Sounds/Glass.aiff'),
         warning: c.get('warningSound', '/System/Library/Sounds/Sosumi.aiff'),
-        player: c.get('playerCommand', 'afplay'),
-        idleMs: c.get('idleMs', 1500),
-        pollMs: c.get('pollMs', 400)
+        player: c.get('playerCommand', 'afplay')
     };
 }
 
@@ -26,6 +29,7 @@ function log(msg) {
     if (output) output.appendLine('[' + new Date().toISOString() + '] ' + msg);
 }
 
+// Play a sound directly from the extension (used by the test command).
 function play(sound) {
     try {
         const child = cp.spawn(cfg().player, [sound], { detached: true, stdio: 'ignore' });
@@ -35,122 +39,106 @@ function play(sound) {
     }
 }
 
-// Cursor writes agent transcripts here.
-function transcriptsRoot() {
-    return path.join(os.homedir(), '.cursor', 'projects');
+// Contents of the Cursor `stop` hook script: drains/logs the payload, plays the
+// bell, and bumps a counter the status bar reads. Regenerated whenever settings
+// change so the configured player/sound stay in sync.
+function scriptContents() {
+    const { player, bell } = cfg();
+    return [
+        '#!/bin/bash',
+        '# Managed by the Sound Alerts Cursor extension -- do not edit by hand.',
+        '# Configure via the soundAlerts.* settings; this file is regenerated.',
+        'mkdir -p "' + HOOKS_DIR + '" 2>/dev/null',
+        '{ printf "\\n--- %s ---\\n" "$(date)"; cat; } >> "' + PAYLOAD_LOG + '" 2>/dev/null',
+        '"' + player + '" "' + bell + '" >/dev/null 2>&1 &',
+        'CF="' + COUNT_FILE + '"',
+        'n=$(cat "$CF" 2>/dev/null || echo 0)',
+        'printf "%s" "$((n+1))" > "$CF" 2>/dev/null',
+        'exit 0',
+        ''
+    ].join('\n');
 }
 
-function readTail(file, maxBytes) {
-    const stat = fs.statSync(file);
-    const start = Math.max(0, stat.size - maxBytes);
-    const len = stat.size - start;
-    const fd = fs.openSync(file, 'r');
+function writeScript() {
+    fs.mkdirSync(HOOKS_DIR, { recursive: true });
+    fs.writeFileSync(SCRIPT_PATH, scriptContents(), { mode: 0o755 });
+    fs.chmodSync(SCRIPT_PATH, 0o755);
+}
+
+function readHooksJson() {
+    if (!fs.existsSync(HOOKS_JSON)) return { version: 1, hooks: {} };
+    return JSON.parse(fs.readFileSync(HOOKS_JSON, 'utf8')); // may throw on invalid JSON
+}
+
+// Write the script and merge a `stop` entry into ~/.cursor/hooks.json,
+// preserving any hooks the user already has.
+function installHook() {
+    writeScript();
+    let data;
     try {
-        const buf = Buffer.alloc(len);
-        fs.readSync(fd, buf, 0, len, start);
-        return buf.toString('utf8');
-    } finally {
-        fs.closeSync(fd);
+        data = readHooksJson();
+    } catch (e) {
+        vscode.window.showWarningMessage(
+            'Sound Alerts: ~/.cursor/hooks.json is not valid JSON, so it was left untouched. ' +
+            'Fix or remove it, then run "Sound Alerts: Reinstall Hook".');
+        log('hooks.json parse error: ' + e.message);
+        return;
+    }
+    if (!data.version) data.version = 1;
+    if (!data.hooks || typeof data.hooks !== 'object') data.hooks = {};
+    if (!Array.isArray(data.hooks.stop)) data.hooks.stop = [];
+    const present = data.hooks.stop.some(h => h && typeof h.command === 'string' && h.command.includes(HOOK_MARKER));
+    if (!present) {
+        data.hooks.stop.push({ command: SCRIPT_PATH });
+        fs.writeFileSync(HOOKS_JSON, JSON.stringify(data, null, 2) + '\n');
+        log('installed stop hook -> ' + HOOKS_JSON);
     }
 }
 
-// 'question' | 'final' | 'working' | null  (based on the latest assistant message)
-function classifyLatest(text) {
-    const lines = text.split('\n');
-    for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        let o;
-        try { o = JSON.parse(line); } catch (e) { continue; }
-        if (!o || o.role !== 'assistant') continue;
-        const content = (o.message && Array.isArray(o.message.content)) ? o.message.content : [];
-        if (!content.length) continue;
-        const toolUses = content.filter(c => c && c.type === 'tool_use');
-        if (toolUses.some(c => c.name === 'AskQuestion')) return 'question';
-        if (toolUses.length === 0) return 'final';
-        return 'working';
-    }
-    return null;
-}
-
-// Find recently-modified Cursor transcript .jsonl files (active conversations).
-// Layout: ~/.cursor/projects/<project>/agent-transcripts/<conv>/<conv>.jsonl
-function findTranscripts() {
-    const out = [];
-    const cutoff = Date.now() - 10 * 60 * 1000;
-    const root = transcriptsRoot();
-    let projects = [];
-    try { projects = fs.readdirSync(root); } catch (e) { return out; }
-    for (const p of projects) {
-        const at = path.join(root, p, 'agent-transcripts');
-        let convs = [];
-        try { convs = fs.readdirSync(at); } catch (e) { continue; }
-        for (const c of convs) {
-            const dir = path.join(at, c);
-            let files = [];
-            try { files = fs.readdirSync(dir); } catch (e) { continue; }
-            for (const f of files) {
-                if (!f.endsWith('.jsonl')) continue;
-                const fp = path.join(dir, f);
-                try {
-                    const st = fs.statSync(fp);
-                    if (st.mtimeMs >= cutoff) out.push({ fp, size: st.size });
-                } catch (e) { /* ignore */ }
-            }
+// Remove our script and our `stop` entry, leaving any other hooks intact.
+function removeHook() {
+    try { if (fs.existsSync(SCRIPT_PATH)) fs.unlinkSync(SCRIPT_PATH); } catch (e) { /* ignore */ }
+    if (!fs.existsSync(HOOKS_JSON)) return;
+    let data;
+    try { data = readHooksJson(); } catch (e) { return; }
+    if (data.hooks && Array.isArray(data.hooks.stop)) {
+        const before = data.hooks.stop.length;
+        data.hooks.stop = data.hooks.stop.filter(
+            h => !(h && typeof h.command === 'string' && h.command.includes(HOOK_MARKER)));
+        if (data.hooks.stop.length !== before) {
+            if (data.hooks.stop.length === 0) delete data.hooks.stop;
+            fs.writeFileSync(HOOKS_JSON, JSON.stringify(data, null, 2) + '\n');
+            log('removed stop hook from ' + HOOKS_JSON);
         }
     }
-    return out;
+}
+
+function reconcile() {
+    if (cfg().enabled) installHook(); else removeHook();
+}
+
+function readCount() {
+    try { return parseInt(fs.readFileSync(COUNT_FILE, 'utf8').trim(), 10) || 0; } catch (e) { return 0; }
 }
 
 function updateStatus() {
     if (!statusItem) return;
-    statusItem.text = '$(bell) ' + counts.bell + '  $(warning) ' + counts.warning;
-    statusItem.tooltip = 'Sound Alerts active\nbells: ' + counts.bell + ', warnings: ' + counts.warning + '\nClick to test sounds';
-}
-
-function poll() {
-    const { enabled, idleMs } = cfg();
-    if (!enabled) return;
-    const now = Date.now();
-
-    for (const { fp, size } of findTranscripts()) {
-        let st = state.get(fp);
-        if (!st) {
-            // First time we see this file: baseline it so we don't replay history.
-            state.set(fp, { size, lastGrow: now, evaluatedSize: size });
-            continue;
-        }
-        if (size > st.size) {
-            st.size = size;
-            st.lastGrow = now;
-        }
-    }
-
-    // Wait for write-idle, then classify the latest assistant message.
-    for (const [fp, st] of state) {
-        if (st.size > st.evaluatedSize && (now - st.lastGrow) >= idleMs) {
-            st.evaluatedSize = st.size; // evaluate this size once
-            let cls = null;
-            try { cls = classifyLatest(readTail(fp, 131072)); } catch (e) { continue; }
-            if (cls === 'question') {
-                counts.warning++; updateStatus(); log('warning (AskQuestion) <- ' + fp); play(cfg().warning);
-            } else if (cls === 'final') {
-                counts.bell++; updateStatus(); log('bell (turn complete) <- ' + fp); play(cfg().bell);
-            }
-            // 'working' / null: nothing; will re-evaluate when the file grows again.
-        }
-    }
+    const on = cfg().enabled;
+    const n = readCount();
+    statusItem.text = '$(bell) ' + n;
+    statusItem.tooltip = 'Sound Alerts ' + (on ? 'active (Cursor stop hook)' : 'disabled') +
+        '\nbells rung: ' + n + '\nClick to test sounds';
 }
 
 function activate(context) {
     output = vscode.window.createOutputChannel('Sound Alerts');
     statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusItem.command = 'soundAlerts.testSounds';
-    updateStatus();
     statusItem.show();
-    log('activated; polling ' + transcriptsRoot());
 
-    pollTimer = setInterval(poll, cfg().pollMs);
+    try { reconcile(); } catch (e) { log('reconcile error: ' + e.message); }
+    updateStatus();
+    uiTimer = setInterval(updateStatus, 2000);
 
     context.subscriptions.push(
         vscode.commands.registerCommand('soundAlerts.testSounds', () => {
@@ -159,13 +147,29 @@ function activate(context) {
             setTimeout(() => play(c.bell), 1200);
             vscode.window.showInformationMessage('Sound Alerts: played warning, then bell.');
         }),
+        vscode.commands.registerCommand('soundAlerts.reinstallHook', () => {
+            try { installHook(); vscode.window.showInformationMessage('Sound Alerts: stop hook (re)installed.'); }
+            catch (e) { vscode.window.showErrorMessage('Sound Alerts: ' + e.message); }
+        }),
+        vscode.commands.registerCommand('soundAlerts.removeHook', () => {
+            try { removeHook(); vscode.window.showInformationMessage('Sound Alerts: stop hook removed.'); }
+            catch (e) { vscode.window.showErrorMessage('Sound Alerts: ' + e.message); }
+        }),
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('soundAlerts')) {
+                try { reconcile(); } catch (err) { log('reconcile error: ' + err.message); }
+                updateStatus();
+            }
+        }),
         statusItem,
-        { dispose: () => { try { clearInterval(pollTimer); } catch (e) {} } }
+        { dispose: () => { try { clearInterval(uiTimer); } catch (e) {} } }
     );
+
+    log('activated; stop hook -> ' + SCRIPT_PATH);
 }
 
 function deactivate() {
-    try { clearInterval(pollTimer); } catch (e) {}
+    try { clearInterval(uiTimer); } catch (e) {}
 }
 
 module.exports = { activate, deactivate };
