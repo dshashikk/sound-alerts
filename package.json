@@ -1,6 +1,6 @@
 {
-  "name": "cursor-sound-alerts",
-  "displayName": "Cursor Sound Alerts",
+  "name": "sound-alerts",
+  "displayName": "Sound Alerts",
   "description": "Audio cues for the Cursor agent: a bell when it finishes a turn and a warning when it asks a question (MCQ), by watching agent transcripts.",
   "version": "0.0.1",
   "publisher": "your-publisher-id",
@@ -27,12 +27,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/cursor-sound-alerts.git"
+    "url": "https://github.com/your-username/sound-alerts.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/cursor-sound-alerts/issues"
+    "url": "https://github.com/your-username/sound-alerts/issues"
   },
-  "homepage": "https://github.com/your-username/cursor-sound-alerts#readme",
+  "homepage": "https://github.com/your-username/sound-alerts#readme",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -49,34 +49,34 @@
   "contributes": {
     "commands": [
       {
-        "command": "cursorSoundAlerts.testSounds",
-        "title": "Cursor Sound Alerts: Test Sounds"
+        "command": "soundAlerts.testSounds",
+        "title": "Sound Alerts: Test Sounds"
       }
     ],
     "configuration": {
-      "title": "Cursor Sound Alerts",
+      "title": "Sound Alerts",
       "properties": {
-        "cursorSoundAlerts.enabled": {
+        "soundAlerts.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable/disable sound alerts."
         },
-        "cursorSoundAlerts.bellSound": {
+        "soundAlerts.bellSound": {
           "type": "string",
           "default": "/System/Library/Sounds/Glass.aiff",
           "description": "Sound file played when the agent finishes a turn (results ready)."
         },
-        "cursorSoundAlerts.warningSound": {
+        "soundAlerts.warningSound": {
           "type": "string",
           "default": "/System/Library/Sounds/Sosumi.aiff",
           "description": "Sound file played when the agent asks a question (MCQ)."
         },
-        "cursorSoundAlerts.playerCommand": {
+        "soundAlerts.playerCommand": {
           "type": "string",
           "default": "afplay",
           "description": "Command used to play a sound file (macOS: afplay; Linux: paplay/aplay; Windows: powershell)."
         },
-        "cursorSoundAlerts.idleMs": {
+        "soundAlerts.idleMs": {
           "type": "number",
           "default": 1500,
           "description": "Milliseconds of transcript write-idle before classifying the latest agent message (debounce)."

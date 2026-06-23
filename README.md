@@ -1,4 +1,4 @@
-# Cursor Sound Alerts
+# Sound Alerts
 
 Audio cues for the [Cursor](https://cursor.com) agent. It plays:
 
@@ -16,16 +16,16 @@ matching sound.
 - Bell on turn completion, warning on `AskQuestion`.
 - No sound while the agent is still working (mid tool-calls).
 - Fully configurable sounds, player command, and debounce.
-- `Cursor Sound Alerts: Test Sounds` command to preview.
+- `Sound Alerts: Test Sounds` command to preview.
 
 ## Install
 
 From a packaged `.vsix`:
 
 ```bash
-cursor --install-extension cursor-sound-alerts-<version>.vsix
+cursor --install-extension sound-alerts-<version>.vsix
 # or, in VS Code:
-code --install-extension cursor-sound-alerts-<version>.vsix
+code --install-extension sound-alerts-<version>.vsix
 ```
 
 Then reload the window (**Developer: Reload Window**).
@@ -38,11 +38,11 @@ Then reload the window (**Developer: Reload Window**).
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `cursorSoundAlerts.enabled` | `true` | Master on/off. |
-| `cursorSoundAlerts.bellSound` | `/System/Library/Sounds/Glass.aiff` | Sound on turn completion. |
-| `cursorSoundAlerts.warningSound` | `/System/Library/Sounds/Sosumi.aiff` | Sound on question/MCQ. |
-| `cursorSoundAlerts.playerCommand` | `afplay` | Player binary. |
-| `cursorSoundAlerts.idleMs` | `1500` | Write-idle debounce before classifying. |
+| `soundAlerts.enabled` | `true` | Master on/off. |
+| `soundAlerts.bellSound` | `/System/Library/Sounds/Glass.aiff` | Sound on turn completion. |
+| `soundAlerts.warningSound` | `/System/Library/Sounds/Sosumi.aiff` | Sound on question/MCQ. |
+| `soundAlerts.playerCommand` | `afplay` | Player binary. |
+| `soundAlerts.idleMs` | `1500` | Write-idle debounce before classifying. |
 
 ### Cross-platform players
 

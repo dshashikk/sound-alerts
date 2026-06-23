@@ -10,7 +10,7 @@ const debounceTimers = new Map(); // filePath -> timeout
 const handledLen = new Map(); // filePath -> byte length already acted on
 
 function cfg() {
-    const c = vscode.workspace.getConfiguration('cursorSoundAlerts');
+    const c = vscode.workspace.getConfiguration('soundAlerts');
     return {
         enabled: c.get('enabled', true),
         bell: c.get('bellSound', '/System/Library/Sounds/Glass.aiff'),
@@ -96,7 +96,7 @@ function onTranscriptChange(file) {
 }
 
 function activate(context) {
-    output = vscode.window.createOutputChannel('Cursor Sound Alerts');
+    output = vscode.window.createOutputChannel('Sound Alerts');
     const base = path.join(os.homedir(), '.cursor', 'projects');
     try {
         watcher = fs.watch(base, { recursive: true }, (event, filename) => {
@@ -109,15 +109,15 @@ function activate(context) {
         log('watching ' + base);
     } catch (e) {
         log('watch error: ' + e.message);
-        vscode.window.showWarningMessage('Cursor Sound Alerts: could not watch transcripts: ' + e.message);
+        vscode.window.showWarningMessage('Sound Alerts: could not watch transcripts: ' + e.message);
     }
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cursorSoundAlerts.testSounds', () => {
+        vscode.commands.registerCommand('soundAlerts.testSounds', () => {
             const c = cfg();
             play(c.warning);
             setTimeout(() => play(c.bell), 1200);
-            vscode.window.showInformationMessage('Cursor Sound Alerts: played warning, then bell.');
+            vscode.window.showInformationMessage('Sound Alerts: played warning, then bell.');
         }),
         { dispose: () => { try { watcher && watcher.close(); } catch (e) {} } }
     );

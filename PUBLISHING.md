@@ -14,16 +14,16 @@
 ```bash
 git init                       # already done if you cloned this folder
 git add -A
-git commit -m "Initial commit: Cursor Sound Alerts"
+git commit -m "Initial commit: Sound Alerts"
 git branch -M main
-git remote add origin https://github.com/<your-username>/cursor-sound-alerts.git
+git remote add origin https://github.com/<your-username>/sound-alerts.git
 git push -u origin main
 ```
 
 ## 2. Build the VSIX
 
 ```bash
-npm run package                # -> cursor-sound-alerts-<version>.vsix
+npm run package                # -> sound-alerts-<version>.vsix
 ```
 
 ## 3a. Publish to the VS Code Marketplace (for VS Code users)
@@ -47,7 +47,7 @@ Cursor installs from Open VSX, so publish there too:
 
 ```bash
 npx ovsx create-namespace <your-publisher-id> -p <token>   # first time only
-npx ovsx publish cursor-sound-alerts-<version>.vsix -p <token>
+npx ovsx publish sound-alerts-<version>.vsix -p <token>
 ```
 
 ## 4. Releases
