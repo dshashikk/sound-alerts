@@ -4,10 +4,11 @@ const os = require('os');
 const path = require('path');
 const cp = require('child_process');
 
-let watcher = null;
 let output = null;
-const debounceTimers = new Map(); // filePath -> timeout
-const handledLen = new Map(); // filePath -> byte length already acted on
+let statusItem = null;
+let pollTimer = null;
+const state = new Map(); // file -> { size, lastGrow, evaluatedSize }
+const counts = { bell: 0, warning: 0 };
 
 function cfg() {
     const c = vscode.workspace.getConfiguration('soundAlerts');
@@ -16,25 +17,29 @@ function cfg() {
         bell: c.get('bellSound', '/System/Library/Sounds/Glass.aiff'),
         warning: c.get('warningSound', '/System/Library/Sounds/Sosumi.aiff'),
         player: c.get('playerCommand', 'afplay'),
-        idleMs: c.get('idleMs', 1500)
+        idleMs: c.get('idleMs', 1500),
+        pollMs: c.get('pollMs', 400)
     };
-}
-
-function play(sound) {
-    const { player } = cfg();
-    try {
-        const child = cp.spawn(player, [sound], { detached: true, stdio: 'ignore' });
-        child.unref();
-    } catch (e) {
-        log('play error: ' + e.message);
-    }
 }
 
 function log(msg) {
     if (output) output.appendLine('[' + new Date().toISOString() + '] ' + msg);
 }
 
-// Read up to maxBytes from the end of the file (transcripts are append-mostly).
+function play(sound) {
+    try {
+        const child = cp.spawn(cfg().player, [sound], { detached: true, stdio: 'ignore' });
+        child.unref();
+    } catch (e) {
+        log('play error: ' + e.message);
+    }
+}
+
+// Cursor writes agent transcripts here.
+function transcriptsRoot() {
+    return path.join(os.homedir(), '.cursor', 'projects');
+}
+
 function readTail(file, maxBytes) {
     const stat = fs.statSync(file);
     const start = Math.max(0, stat.size - maxBytes);
@@ -43,17 +48,13 @@ function readTail(file, maxBytes) {
     try {
         const buf = Buffer.alloc(len);
         fs.readSync(fd, buf, 0, len, start);
-        return { text: buf.toString('utf8'), size: stat.size };
+        return buf.toString('utf8');
     } finally {
         fs.closeSync(fd);
     }
 }
 
-// Classify the most recent assistant message:
-//   'question' -> ends on an AskQuestion tool call (agent is waiting on you)
-//   'final'    -> text-only assistant message (turn complete, results ready)
-//   'working'  -> ends on another tool call (still doing work)
-//   null       -> indeterminate
+// 'question' | 'final' | 'working' | null  (based on the latest assistant message)
 function classifyLatest(text) {
     const lines = text.split('\n');
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -72,45 +73,84 @@ function classifyLatest(text) {
     return null;
 }
 
-function onTranscriptChange(file) {
+// Find recently-modified Cursor transcript .jsonl files (active conversations).
+// Layout: ~/.cursor/projects/<project>/agent-transcripts/<conv>/<conv>.jsonl
+function findTranscripts() {
+    const out = [];
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    const root = transcriptsRoot();
+    let projects = [];
+    try { projects = fs.readdirSync(root); } catch (e) { return out; }
+    for (const p of projects) {
+        const at = path.join(root, p, 'agent-transcripts');
+        let convs = [];
+        try { convs = fs.readdirSync(at); } catch (e) { continue; }
+        for (const c of convs) {
+            const dir = path.join(at, c);
+            let files = [];
+            try { files = fs.readdirSync(dir); } catch (e) { continue; }
+            for (const f of files) {
+                if (!f.endsWith('.jsonl')) continue;
+                const fp = path.join(dir, f);
+                try {
+                    const st = fs.statSync(fp);
+                    if (st.mtimeMs >= cutoff) out.push({ fp, size: st.size });
+                } catch (e) { /* ignore */ }
+            }
+        }
+    }
+    return out;
+}
+
+function updateStatus() {
+    if (!statusItem) return;
+    statusItem.text = '$(bell) ' + counts.bell + '  $(warning) ' + counts.warning;
+    statusItem.tooltip = 'Sound Alerts active\nbells: ' + counts.bell + ', warnings: ' + counts.warning + '\nClick to test sounds';
+}
+
+function poll() {
     const { enabled, idleMs } = cfg();
     if (!enabled) return;
-    if (debounceTimers.has(file)) clearTimeout(debounceTimers.get(file));
-    debounceTimers.set(file, setTimeout(() => {
-        debounceTimers.delete(file);
-        let info;
-        try { info = readTail(file, 65536); } catch (e) { return; }
-        const prev = handledLen.get(file);
-        if (prev !== undefined && info.size <= prev) return; // nothing new since last action
-        const cls = classifyLatest(info.text);
-        if (cls === 'working' || cls === null) return; // more is coming; don't mark handled
-        handledLen.set(file, info.size);
-        if (cls === 'question') {
-            log('warning (AskQuestion) <- ' + file);
-            play(cfg().warning);
-        } else if (cls === 'final') {
-            log('bell (turn complete) <- ' + file);
-            play(cfg().bell);
+    const now = Date.now();
+
+    for (const { fp, size } of findTranscripts()) {
+        let st = state.get(fp);
+        if (!st) {
+            // First time we see this file: baseline it so we don't replay history.
+            state.set(fp, { size, lastGrow: now, evaluatedSize: size });
+            continue;
         }
-    }, idleMs));
+        if (size > st.size) {
+            st.size = size;
+            st.lastGrow = now;
+        }
+    }
+
+    // Wait for write-idle, then classify the latest assistant message.
+    for (const [fp, st] of state) {
+        if (st.size > st.evaluatedSize && (now - st.lastGrow) >= idleMs) {
+            st.evaluatedSize = st.size; // evaluate this size once
+            let cls = null;
+            try { cls = classifyLatest(readTail(fp, 131072)); } catch (e) { continue; }
+            if (cls === 'question') {
+                counts.warning++; updateStatus(); log('warning (AskQuestion) <- ' + fp); play(cfg().warning);
+            } else if (cls === 'final') {
+                counts.bell++; updateStatus(); log('bell (turn complete) <- ' + fp); play(cfg().bell);
+            }
+            // 'working' / null: nothing; will re-evaluate when the file grows again.
+        }
+    }
 }
 
 function activate(context) {
     output = vscode.window.createOutputChannel('Sound Alerts');
-    const base = path.join(os.homedir(), '.cursor', 'projects');
-    try {
-        watcher = fs.watch(base, { recursive: true }, (event, filename) => {
-            if (!filename) return;
-            const fp = path.join(base, filename);
-            if (!fp.includes(path.sep + 'agent-transcripts' + path.sep)) return;
-            if (!fp.endsWith('.jsonl')) return;
-            onTranscriptChange(fp);
-        });
-        log('watching ' + base);
-    } catch (e) {
-        log('watch error: ' + e.message);
-        vscode.window.showWarningMessage('Sound Alerts: could not watch transcripts: ' + e.message);
-    }
+    statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusItem.command = 'soundAlerts.testSounds';
+    updateStatus();
+    statusItem.show();
+    log('activated; polling ' + transcriptsRoot());
+
+    pollTimer = setInterval(poll, cfg().pollMs);
 
     context.subscriptions.push(
         vscode.commands.registerCommand('soundAlerts.testSounds', () => {
@@ -119,12 +159,13 @@ function activate(context) {
             setTimeout(() => play(c.bell), 1200);
             vscode.window.showInformationMessage('Sound Alerts: played warning, then bell.');
         }),
-        { dispose: () => { try { watcher && watcher.close(); } catch (e) {} } }
+        statusItem,
+        { dispose: () => { try { clearInterval(pollTimer); } catch (e) {} } }
     );
 }
 
 function deactivate() {
-    try { watcher && watcher.close(); } catch (e) {}
+    try { clearInterval(pollTimer); } catch (e) {}
 }
 
 module.exports = { activate, deactivate };

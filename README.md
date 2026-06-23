@@ -43,6 +43,7 @@ Then reload the window (**Developer: Reload Window**).
 | `soundAlerts.warningSound` | `/System/Library/Sounds/Sosumi.aiff` | Sound on question/MCQ. |
 | `soundAlerts.playerCommand` | `afplay` | Player binary. |
 | `soundAlerts.idleMs` | `1500` | Write-idle debounce before classifying. |
+| `soundAlerts.pollMs` | `400` | How often (ms) to scan transcripts for changes. Applied on reload. |
 
 ### Cross-platform players
 

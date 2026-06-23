@@ -3,7 +3,7 @@
   "displayName": "Sound Alerts",
   "description": "Audio cues for the Cursor agent: a bell when it finishes a turn and a warning when it asks a question (MCQ), by watching agent transcripts.",
   "version": "0.0.1",
-  "publisher": "your-publisher-id",
+  "publisher": "dshashikk",
   "license": "MIT",
   "engines": {
     "vscode": "^1.74.0"
@@ -27,12 +27,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/sound-alerts.git"
+    "url": "https://github.com/dshashikk/sound-alerts.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/sound-alerts/issues"
+    "url": "https://github.com/dshashikk/sound-alerts/issues"
   },
-  "homepage": "https://github.com/your-username/sound-alerts#readme",
+  "homepage": "https://github.com/dshashikk/sound-alerts#readme",
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -80,6 +80,11 @@
           "type": "number",
           "default": 1500,
           "description": "Milliseconds of transcript write-idle before classifying the latest agent message (debounce)."
+        },
+        "soundAlerts.pollMs": {
+          "type": "number",
+          "default": 400,
+          "description": "How often (ms) to scan transcripts for changes. Lower = snappier alerts, slightly more CPU. Applied on reload."
         }
       }
     }

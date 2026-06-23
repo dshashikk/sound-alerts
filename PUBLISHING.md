@@ -1,13 +1,12 @@
 # Publishing guide
 
+Publisher id and GitHub URLs are already set to `dshashikk`.
+
 ## 0. One-time prep
 
-1. Replace placeholders in `package.json`:
-   - `publisher` → your Marketplace/Open VSX publisher id
-   - `repository`, `bugs`, `homepage` → your GitHub URLs
-2. Add an `icon.png` (128×128 recommended) at the repo root (referenced by the
-   `icon` field). Remove the `icon` field if you don't have one yet.
-3. `npm install`
+1. `npm install`
+2. (Optional) Add an `icon.png` (128×128) at the repo root and an `"icon"`
+   field in `package.json` for a nicer Marketplace/Open VSX listing.
 
 ## 1. Push to GitHub
 
@@ -50,10 +49,33 @@ npx ovsx create-namespace <your-publisher-id> -p <token>   # first time only
 npx ovsx publish sound-alerts-<version>.vsix -p <token>
 ```
 
-## 4. Releases
+## 4. Automated releases (recommended)
 
-Tag and create a GitHub release; attach the `.vsix`. The optional workflow in
-`.github/workflows/release.yml` builds the VSIX on tag push.
+`.github/workflows/release.yml` runs on any `v*` tag push and will:
 
-> Note: actual publishing requires your own accounts and tokens — those steps
-> must be run by you; they are not automated here.
+1. Build the `.vsix`.
+2. Attach it to the GitHub release for that tag.
+3. Publish to Open VSX — **only if** an `OVSX_TOKEN` repo secret is set.
+
+Set the secret once:
+
+```bash
+gh secret set OVSX_TOKEN   # paste your open-vsx.org access token
+```
+
+First-time Open VSX namespace (once per publisher id):
+
+```bash
+npx ovsx create-namespace dshashikk -p <token>
+```
+
+Then cut a release:
+
+```bash
+npm version patch            # bumps package.json + creates a git tag
+git push --follow-tags
+```
+
+> Note: publishing to Open VSX / the VS Code Marketplace requires your own
+> accounts and tokens — those must be supplied by you (via the `OVSX_TOKEN`
+> secret or local login).
