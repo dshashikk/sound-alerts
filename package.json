@@ -2,7 +2,7 @@
   "name": "sound-alerts",
   "displayName": "Sound Alerts",
   "description": "Audio cues for the Cursor agent: a bell when it finishes a turn and a warning when it asks a question (MCQ), by watching agent transcripts.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "dshashikk",
   "license": "MIT",
   "engines": {
