@@ -1,0 +1,8 @@
+.github/**
+.gitignore
+.vscode/**
+node_modules/**
+**/*.vsix
+PUBLISHING.md
+*.log
+.DS_Store

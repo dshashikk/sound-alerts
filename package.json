@@ -1,0 +1,87 @@
+{
+  "name": "cursor-sound-alerts",
+  "displayName": "Cursor Sound Alerts",
+  "description": "Audio cues for the Cursor agent: a bell when it finishes a turn and a warning when it asks a question (MCQ), by watching agent transcripts.",
+  "version": "0.0.1",
+  "publisher": "your-publisher-id",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "cursor",
+    "sound",
+    "audio",
+    "notification",
+    "bell",
+    "agent",
+    "ai"
+  ],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/cursor-sound-alerts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/cursor-sound-alerts/issues"
+  },
+  "homepage": "https://github.com/your-username/cursor-sound-alerts#readme",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "package": "vsce package",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "ovsx publish"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0",
+    "ovsx": "^0.9.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "cursorSoundAlerts.testSounds",
+        "title": "Cursor Sound Alerts: Test Sounds"
+      }
+    ],
+    "configuration": {
+      "title": "Cursor Sound Alerts",
+      "properties": {
+        "cursorSoundAlerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable sound alerts."
+        },
+        "cursorSoundAlerts.bellSound": {
+          "type": "string",
+          "default": "/System/Library/Sounds/Glass.aiff",
+          "description": "Sound file played when the agent finishes a turn (results ready)."
+        },
+        "cursorSoundAlerts.warningSound": {
+          "type": "string",
+          "default": "/System/Library/Sounds/Sosumi.aiff",
+          "description": "Sound file played when the agent asks a question (MCQ)."
+        },
+        "cursorSoundAlerts.playerCommand": {
+          "type": "string",
+          "default": "afplay",
+          "description": "Command used to play a sound file (macOS: afplay; Linux: paplay/aplay; Windows: powershell)."
+        },
+        "cursorSoundAlerts.idleMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Milliseconds of transcript write-idle before classifying the latest agent message (debounce)."
+        }
+      }
+    }
+  }
+}
